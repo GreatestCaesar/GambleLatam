@@ -21,6 +21,12 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
+# Подавляем предупреждения PTBUserWarning о CallbackQueryHandler
+# Это предупреждение не критично - CallbackQueryHandler работает корректно с per_chat=True и per_user=True
+warnings.filterwarnings("ignore", message=".*CallbackQueryHandler.*per_message.*", category=UserWarning)
+warnings.filterwarnings("ignore", message=".*per_message=False.*CallbackQueryHandler.*", category=UserWarning)
+warnings.filterwarnings("ignore", message=".*If 'per_message=False'.*CallbackQueryHandler.*", category=UserWarning)
+
 # Состояния для ConversationHandler
 SELECTING_COUNTRY, SELECTING_TYPE, ENTERING_ACCOUNT, ENTERING_AMOUNT = range(4)
 
@@ -1137,12 +1143,10 @@ def init_application():
     # Создаем ConversationHandler
     # per_message=False (по умолчанию) позволяет использовать разные типы handlers
     # per_chat=True и per_user=True обеспечивают правильное отслеживание состояний
-    # Подавляем предупреждение о CallbackQueryHandler - это нормально для нашего случая
-    with warnings.catch_warnings():
-        warnings.filterwarnings("ignore", message=".*CallbackQueryHandler.*per_message.*", category=UserWarning)
-        conv_handler = ConversationHandler(
-            entry_points=[CommandHandler('start', start)],
-            states={
+    # Предупреждение о CallbackQueryHandler подавлено глобально в начале файла
+    conv_handler = ConversationHandler(
+        entry_points=[CommandHandler('start', start)],
+        states={
             SELECTING_COUNTRY: [
                 CallbackQueryHandler(country_selected, pattern='^country_'),
                 CommandHandler('start', start)  # Позволяет перезапустить в любой момент
