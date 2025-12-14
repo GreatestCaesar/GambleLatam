@@ -401,7 +401,7 @@ async def generate_screenshot(user_id: int) -> str:
                 env['PLAYWRIGHT_BROWSERS_PATH'] = browsers_dir
                 
                 result = subprocess.run(
-                    ['python', '-m', 'playwright', 'install', 'chromium', '--with-deps'], 
+                    ['python', '-m', 'playwright', 'install', 'chromium'], 
                     check=False, 
                     timeout=180,
                     capture_output=True,

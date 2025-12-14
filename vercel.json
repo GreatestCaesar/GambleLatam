@@ -1,5 +1,5 @@
 {
-  "buildCommand": "python3 -m playwright install chromium --with-deps",
+  "buildCommand": "python3 -m playwright install chromium",
   "functions": {
     "api/**/*.py": {
       "maxDuration": 60
