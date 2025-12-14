@@ -11,6 +11,7 @@ from playwright.async_api import async_playwright
 from jinja2 import Template
 import json
 import pytz
+import subprocess
 
 # Настройка логирования
 logging.basicConfig(
@@ -320,8 +321,46 @@ async def generate_screenshot(user_id: int) -> str:
     # Генерируем скриншот с помощью Playwright
     screenshot_path = os.path.join(tmp_dir, f"screenshot_{user_id}.png")
     
+    # Устанавливаем переменные окружения для Playwright в serverless
+    os.environ.setdefault('PLAYWRIGHT_BROWSERS_PATH', '/tmp/.cache/ms-playwright')
+    
     async with async_playwright() as p:
-        browser = await p.chromium.launch(headless=True)
+        # Запускаем браузер с параметрами для serverless окружения
+        try:
+            browser = await p.chromium.launch(
+                headless=True,
+                args=[
+                    '--no-sandbox',
+                    '--disable-setuid-sandbox',
+                    '--disable-dev-shm-usage',
+                    '--disable-gpu',
+                    '--single-process'
+                ]
+            )
+        except Exception as e:
+            logger.error(f"Failed to launch browser: {e}")
+            # Пытаемся установить браузеры, если они не установлены
+            try:
+                logger.info("Attempting to install Playwright browsers...")
+                subprocess.run(
+                    ['python', '-m', 'playwright', 'install', 'chromium'], 
+                    check=False, 
+                    timeout=60,
+                    env={**os.environ, 'PLAYWRIGHT_BROWSERS_PATH': '/tmp/.cache/ms-playwright'}
+                )
+                browser = await p.chromium.launch(
+                    headless=True,
+                    args=[
+                        '--no-sandbox',
+                        '--disable-setuid-sandbox',
+                        '--disable-dev-shm-usage',
+                        '--disable-gpu',
+                        '--single-process'
+                    ]
+                )
+            except Exception as install_error:
+                logger.error(f"Failed to install/launch browser: {install_error}")
+                return None
         # Устанавливаем нормальный размер viewport
         page = await browser.new_page(viewport={'width': 1280, 'height': 800})
         
