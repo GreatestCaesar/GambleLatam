@@ -1134,7 +1134,8 @@ def init_application():
     app = Application.builder().token(token).build()
     
     # Создаем ConversationHandler
-    # per_message=True необходимо для правильной обработки CallbackQueryHandler
+    # per_message=False (по умолчанию) позволяет использовать разные типы handlers
+    # per_chat=True и per_user=True обеспечивают правильное отслеживание состояний
     conv_handler = ConversationHandler(
         entry_points=[CommandHandler('start', start)],
         states={
@@ -1156,9 +1157,9 @@ def init_application():
             ],
         },
         fallbacks=[CommandHandler('cancel', cancel), CommandHandler('start', start)],
-        per_message=True,  # Необходимо для правильной обработки CallbackQueryHandler
         per_chat=True,
         per_user=True
+        # per_message=False по умолчанию - это правильно для смешанных handlers
     )
     
     app.add_handler(conv_handler)
