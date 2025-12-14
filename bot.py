@@ -454,7 +454,7 @@ async def generate_screenshot(user_id: int) -> str:
             
             # Попытка 2.5: Попробовать использовать браузер без указания пути (может найти системный)
             if not browser:
-                logger.info("Attempt 2.5: Trying to use system browser without explicit path...")
+                logger.info("Attempt 2.5: Trying to use browser without explicit path (auto-detect)...")
                 try:
                     # Пробуем запустить без указания executable_path - может найти системный браузер
                     browser = await p.chromium.launch(
@@ -464,6 +464,35 @@ async def generate_screenshot(user_id: int) -> str:
                     logger.info("Browser launched successfully (system browser auto-detected)")
                 except Exception as e2_5:
                     logger.warning(f"Failed to auto-detect system browser: {str(e2_5)[:200]}")
+            
+            # Попытка 2.6: Попробовать найти Chrome через which/whereis команды
+            if not browser:
+                logger.info("Attempt 2.6: Searching for Chrome/Chromium using system commands...")
+                try:
+                    import shutil
+                    # Пробуем найти chrome/chromium через which
+                    chrome_paths = []
+                    for cmd in ['chromium', 'chromium-browser', 'google-chrome', 'chrome']:
+                        path = shutil.which(cmd)
+                        if path:
+                            chrome_paths.append(path)
+                            logger.info(f"Found browser via 'which {cmd}': {path}")
+                    
+                    # Пробуем использовать найденные пути
+                    for chrome_path in chrome_paths:
+                        try:
+                            browser = await p.chromium.launch(
+                                headless=True,
+                                executable_path=chrome_path,
+                                args=launch_args
+                            )
+                            logger.info(f"Browser launched successfully using found path: {chrome_path}")
+                            break
+                        except Exception as e2_6:
+                            logger.warning(f"Failed to launch browser at {chrome_path}: {str(e2_6)[:200]}")
+                            continue
+                except Exception as e2_6:
+                    logger.warning(f"Error searching for browsers: {str(e2_6)[:200]}")
             
             # Попытка 3: Установить браузеры в /tmp только если есть место
             if not browser:
