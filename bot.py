@@ -209,14 +209,29 @@ async def type_selected(update: Update, context: ContextTypes.DEFAULT_TYPE):
     
     user_id = query.from_user.id
     if user_id not in user_data:
-        await query.edit_message_text("Ошибка. Начните с /start")
+        try:
+            await query.edit_message_text("Ошибка. Начните с /start")
+        except Exception:
+            await query.message.reply_text("Ошибка. Начните с /start")
         return ConversationHandler.END
     
     user_data[user_id]['screenshot_type'] = screenshot_type
     
-    await query.edit_message_text(
-        "Введите номер аккаунта:"
-    )
+    # Пытаемся отредактировать сообщение, игнорируя ошибку "Message is not modified"
+    try:
+        await query.edit_message_text(
+            "Введите номер аккаунта:"
+        )
+    except Exception as e:
+        # Игнорируем ошибку "Message is not modified" - это нормально, если сообщение уже такое же
+        if "not modified" not in str(e).lower():
+            logger.warning(f"Error editing message in type_selected: {e}")
+            # Если не удалось отредактировать, просто отправляем новое сообщение
+            try:
+                await query.message.reply_text("Введите номер аккаунта:")
+            except Exception:
+                pass
+    
     return ENTERING_ACCOUNT
 
 
@@ -371,12 +386,53 @@ async def generate_screenshot(user_id: int) -> str:
     # Генерируем скриншот с помощью Playwright
     screenshot_path = os.path.join(tmp_dir, f"screenshot_{user_id}.png")
     
-    # В Vercel serverless браузеры, установленные при сборке, могут быть недоступны
-    # Пытаемся использовать системный браузер или установить в доступную директорию
-    # Проверяем доступное место в /tmp перед установкой
+    # В Railway/серверном окружении проверяем, нужно ли установить браузеры
+    # Устанавливаем PLAYWRIGHT_BROWSERS_PATH ДО создания экземпляра Playwright
+    browsers_dir = '/tmp/.cache/ms-playwright'
     
-    # Сначала пытаемся использовать браузеры, установленные при сборке
-    # (они могут быть в системной директории или в домашней директории пользователя сборки)
+    # Проверяем, установлены ли браузеры в /tmp
+    chromium_path = os.path.join(browsers_dir, 'chromium-1091', 'chrome-linux', 'chrome')
+    if not os.path.exists(chromium_path):
+        # Браузеры не установлены, нужно установить
+        logger.info("Browsers not found in /tmp, checking available space...")
+        try:
+            import shutil
+            tmp_stat = shutil.disk_usage('/tmp')
+            free_space_mb = tmp_stat.free / (1024 * 1024)
+            logger.info(f"Available space in /tmp: {free_space_mb:.2f} MB")
+            
+            if free_space_mb > 400:
+                logger.info("Installing browsers in /tmp...")
+                os.makedirs(browsers_dir, exist_ok=True)
+                os.environ['PLAYWRIGHT_BROWSERS_PATH'] = browsers_dir
+                
+                result = subprocess.run(
+                    ['python3', '-m', 'playwright', 'install', 'chromium'],
+                    check=False,
+                    timeout=300,
+                    capture_output=True,
+                    text=True,
+                    env={**os.environ, 'PLAYWRIGHT_BROWSERS_PATH': browsers_dir}
+                )
+                
+                if result.returncode == 0:
+                    logger.info("Browsers installed successfully in /tmp")
+                else:
+                    logger.error(f"Failed to install browsers: {result.stderr[:500]}")
+            else:
+                logger.error(f"Insufficient space in /tmp: {free_space_mb:.2f} MB")
+        except Exception as e:
+            logger.error(f"Error installing browsers: {e}", exc_info=True)
+    else:
+        # Браузеры уже установлены, просто устанавливаем переменную окружения
+        logger.info("Browsers found in /tmp, using them")
+    
+    # ВАЖНО: Устанавливаем переменную окружения ДО создания экземпляра Playwright
+    # Это нужно делать всегда, независимо от того, были ли браузеры установлены только что или уже были
+    os.environ['PLAYWRIGHT_BROWSERS_PATH'] = browsers_dir
+    logger.info(f"Set PLAYWRIGHT_BROWSERS_PATH to: {browsers_dir}")
+    
+    # Теперь создаем экземпляр Playwright с правильным путем к браузерам
     async with async_playwright() as p:
         browser = None
         launch_args = [
@@ -494,60 +550,18 @@ async def generate_screenshot(user_id: int) -> str:
                 except Exception as e2_6:
                     logger.warning(f"Error searching for browsers: {str(e2_6)[:200]}")
             
-            # Попытка 3: Установить браузеры в /tmp только если есть место
+            # Попытка 3: Попробовать запустить браузер с установленным путем
+            # (браузеры уже должны быть установлены в начале функции)
             if not browser:
-                logger.info("Attempt 3: Checking available space in /tmp for browser installation...")
+                logger.info("Attempt 3: Trying to launch browser with installed path...")
                 try:
-                    # Проверяем доступное место в /tmp (нужно минимум 200MB для Chromium)
-                    import shutil
-                    tmp_stat = shutil.disk_usage('/tmp')
-                    free_space_mb = tmp_stat.free / (1024 * 1024)
-                    logger.info(f"Available space in /tmp: {free_space_mb:.2f} MB")
-                    
-                    if free_space_mb > 300:  # Нужно минимум 300MB свободного места
-                        logger.info("Sufficient space available. Installing browsers in /tmp...")
-                        browsers_dir = '/tmp/.cache/ms-playwright'
-                        os.makedirs(browsers_dir, exist_ok=True)
-                        os.environ['PLAYWRIGHT_BROWSERS_PATH'] = browsers_dir
-                        
-                        # Устанавливаем только chromium (самый легковесный)
-                        logger.info("Running: python3 -m playwright install chromium")
-                        result = subprocess.run(
-                            ['python3', '-m', 'playwright', 'install', 'chromium'],
-                            check=False,
-                            timeout=300,
-                            capture_output=True,
-                            text=True,
-                            env={**os.environ, 'PLAYWRIGHT_BROWSERS_PATH': browsers_dir}
-                        )
-                        
-                        logger.info(f"Installation exit code: {result.returncode}")
-                        if result.stdout:
-                            logger.info(f"Installation stdout: {result.stdout[:500]}")
-                        if result.stderr:
-                            logger.warning(f"Installation stderr: {result.stderr[:500]}")
-                        
-                        if result.returncode == 0:
-                            logger.info("Browsers installed successfully in /tmp")
-                            try:
-                                browser = await p.chromium.launch(
-                                    headless=True,
-                                    args=launch_args
-                                )
-                                logger.info("Browser launched successfully after installation in /tmp")
-                            except Exception as launch_error:
-                                logger.error(f"Failed to launch browser after installation: {launch_error}")
-                        else:
-                            logger.error(f"Failed to install browsers. Exit code: {result.returncode}")
-                            if result.stderr:
-                                logger.error(f"Error details: {result.stderr[:1000]}")
-                    else:
-                        logger.error(f"Insufficient space in /tmp: {free_space_mb:.2f} MB (need at least 400 MB)")
-                        logger.error("Cannot install browsers - not enough space in /tmp")
-                        logger.error("This is a limitation of Vercel serverless environment")
-                        logger.error("Playwright browsers require ~300-400MB of disk space")
+                    browser = await p.chromium.launch(
+                        headless=True,
+                        args=launch_args
+                    )
+                    logger.info("Browser launched successfully with installed path")
                 except Exception as e3:
-                    logger.error(f"Error during attempt 3 (install in /tmp): {e3}", exc_info=True)
+                    logger.error(f"Failed to launch browser with installed path: {e3}")
         
         if not browser:
             logger.error("All browser launch attempts failed. Cannot generate screenshot.")
