@@ -2,6 +2,7 @@ import asyncio
 import os
 import logging
 import random
+import warnings
 from datetime import datetime
 from typing import Dict
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
@@ -1136,9 +1137,12 @@ def init_application():
     # Создаем ConversationHandler
     # per_message=False (по умолчанию) позволяет использовать разные типы handlers
     # per_chat=True и per_user=True обеспечивают правильное отслеживание состояний
-    conv_handler = ConversationHandler(
-        entry_points=[CommandHandler('start', start)],
-        states={
+    # Подавляем предупреждение о CallbackQueryHandler - это нормально для нашего случая
+    with warnings.catch_warnings():
+        warnings.filterwarnings("ignore", message=".*CallbackQueryHandler.*per_message.*", category=UserWarning)
+        conv_handler = ConversationHandler(
+            entry_points=[CommandHandler('start', start)],
+            states={
             SELECTING_COUNTRY: [
                 CallbackQueryHandler(country_selected, pattern='^country_'),
                 CommandHandler('start', start)  # Позволяет перезапустить в любой момент
