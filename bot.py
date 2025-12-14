@@ -392,20 +392,33 @@ async def generate_screenshot(user_id: int) -> str:
             # Пытаемся установить браузеры, если они не установлены
             try:
                 logger.info("Attempting to install Playwright browsers...")
+                # Создаем директорию для браузеров
+                browsers_dir = '/tmp/.cache/ms-playwright'
+                os.makedirs(browsers_dir, exist_ok=True)
+                
                 # Используем subprocess с правильными параметрами для serverless
+                env = os.environ.copy()
+                env['PLAYWRIGHT_BROWSERS_PATH'] = browsers_dir
+                
                 result = subprocess.run(
-                    ['python', '-m', 'playwright', 'install', 'chromium'], 
+                    ['python', '-m', 'playwright', 'install', 'chromium', '--with-deps'], 
                     check=False, 
-                    timeout=120,
+                    timeout=180,
                     capture_output=True,
                     text=True,
-                    env={**os.environ, 'PLAYWRIGHT_BROWSERS_PATH': '/tmp/.cache/ms-playwright'}
+                    env=env
                 )
-                logger.info(f"Playwright install output: {result.stdout}")
+                logger.info(f"Playwright install exit code: {result.returncode}")
+                logger.info(f"Playwright install stdout: {result.stdout[:500] if result.stdout else 'None'}")
                 if result.stderr:
-                    logger.warning(f"Playwright install warnings: {result.stderr}")
+                    logger.warning(f"Playwright install stderr: {result.stderr[:500]}")
+                
+                if result.returncode != 0:
+                    logger.error(f"Playwright install failed with exit code {result.returncode}")
+                    return None
                 
                 # Пытаемся снова запустить браузер
+                logger.info("Retrying browser launch after installation")
                 browser = await p.chromium.launch(
                     headless=True,
                     args=[
@@ -416,10 +429,9 @@ async def generate_screenshot(user_id: int) -> str:
                         '--single-process'
                     ]
                 )
+                logger.info("Browser launched successfully after installation")
             except Exception as install_error:
-                logger.error(f"Failed to install/launch browser: {install_error}")
-                import traceback
-                logger.error(f"Traceback: {traceback.format_exc()}")
+                logger.error(f"Failed to install/launch browser: {install_error}", exc_info=True)
                 return None
         # Устанавливаем нормальный размер viewport
         page = await browser.new_page(viewport={'width': 1280, 'height': 800})
