@@ -71,10 +71,6 @@ class handler(BaseHTTPRequestHandler):
                 }).encode())
                 return
             
-            # Создаем новое приложение для каждого запроса
-            # Это решает проблему с event loop в serverless окружении
-            application = application_factory()
-            
             # Получаем данные запроса
             content_length = int(self.headers.get('Content-Length', 0))
             body = self.rfile.read(content_length)
@@ -99,10 +95,28 @@ class handler(BaseHTTPRequestHandler):
             
             # Создаем новое приложение для каждого запроса
             # Это решает проблему с event loop в serverless окружении
-            application = application_factory()
+            try:
+                application = application_factory()
+                logger.info("Application created successfully")
+            except Exception as e:
+                logger.error(f"Failed to create application: {e}", exc_info=True)
+                self.send_response(500)
+                self.send_header('Content-Type', 'application/json')
+                self.end_headers()
+                self.wfile.write(json.dumps({"ok": False, "error": f"Failed to create application: {str(e)}"}).encode())
+                return
             
             # Создаем Update объект
-            update = Update.de_json(data, application.bot)
+            try:
+                update = Update.de_json(data, application.bot)
+                logger.info(f"Update created: {update.update_id if update else 'None'}")
+            except Exception as e:
+                logger.error(f"Failed to create Update: {e}", exc_info=True)
+                self.send_response(400)
+                self.send_header('Content-Type', 'application/json')
+                self.end_headers()
+                self.wfile.write(json.dumps({"ok": False, "error": f"Failed to create Update: {str(e)}"}).encode())
+                return
             
             if update and update.effective_user:
                 user_id = update.effective_user.id

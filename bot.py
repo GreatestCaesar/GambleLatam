@@ -342,12 +342,20 @@ async def generate_screenshot(user_id: int) -> str:
             # Пытаемся установить браузеры, если они не установлены
             try:
                 logger.info("Attempting to install Playwright browsers...")
-                subprocess.run(
+                # Используем subprocess с правильными параметрами для serverless
+                result = subprocess.run(
                     ['python', '-m', 'playwright', 'install', 'chromium'], 
                     check=False, 
-                    timeout=60,
+                    timeout=120,
+                    capture_output=True,
+                    text=True,
                     env={**os.environ, 'PLAYWRIGHT_BROWSERS_PATH': '/tmp/.cache/ms-playwright'}
                 )
+                logger.info(f"Playwright install output: {result.stdout}")
+                if result.stderr:
+                    logger.warning(f"Playwright install warnings: {result.stderr}")
+                
+                # Пытаемся снова запустить браузер
                 browser = await p.chromium.launch(
                     headless=True,
                     args=[
@@ -360,6 +368,8 @@ async def generate_screenshot(user_id: int) -> str:
                 )
             except Exception as install_error:
                 logger.error(f"Failed to install/launch browser: {install_error}")
+                import traceback
+                logger.error(f"Traceback: {traceback.format_exc()}")
                 return None
         # Устанавливаем нормальный размер viewport
         page = await browser.new_page(viewport={'width': 1280, 'height': 800})
@@ -1069,19 +1079,16 @@ def generate_html(country_info: Dict, account: str, amount: float, is_error: boo
 
 
 def init_application():
-    """Инициализирует приложение бота (используется и локально, и на Vercel)"""
-    global application
-    
-    if application is not None:
-        return application
-    
+    """Инициализирует приложение бота (используется и локально, и на Vercel)
+    В serverless окружении создает новое приложение для каждого запроса
+    """
     # Получаем токен из переменной окружения
     token = os.getenv('TELEGRAM_BOT_TOKEN')
     if not token:
         raise ValueError("TELEGRAM_BOT_TOKEN environment variable is not set")
     
-    # Создаем приложение
-    application = Application.builder().token(token).build()
+    # Создаем новое приложение для каждого запроса (важно для serverless)
+    app = Application.builder().token(token).build()
     
     # Создаем ConversationHandler
     conv_handler = ConversationHandler(
@@ -1107,15 +1114,15 @@ def init_application():
         fallbacks=[CommandHandler('cancel', cancel), CommandHandler('start', start)],
     )
     
-    application.add_handler(conv_handler)
+    app.add_handler(conv_handler)
     
     # Добавляем обработчик ошибок
-    application.add_error_handler(error_handler)
+    app.add_error_handler(error_handler)
     
     # НЕ инициализируем приложение здесь
     # Для webhook приложение будет инициализировано при каждом запросе
     # в том же event loop, где оно будет использоваться
-    return application
+    return app
 
 
 def main():
