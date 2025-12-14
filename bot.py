@@ -1217,6 +1217,65 @@ def init_application():
     # Он будет работать только если ConversationHandler (group=0 по умолчанию) не обработал callback
     app.add_handler(CallbackQueryHandler(handle_callback_query_fallback), group=1)
     
+    # Добавляем обработчик сообщений для serverless окружения
+    # В serverless состояние ConversationHandler теряется между запросами,
+    # поэтому проверяем user_data напрямую
+    async def handle_message_fallback(update: Update, context: ContextTypes.DEFAULT_TYPE):
+        """Обработчик сообщений, который работает даже если ConversationHandler не находит состояние"""
+        if not update.message or not update.message.text:
+            return
+        
+        user_id = update.message.from_user.id
+        text = update.message.text.strip()
+        
+        logger.info(f"Message received in fallback handler: text={text}, user_id={user_id}")
+        
+        # Пропускаем команды - они обрабатываются другими handlers
+        if text.startswith('/'):
+            return
+        
+        # Проверяем, есть ли данные пользователя
+        if user_id not in user_data:
+            logger.info(f"No user data for user {user_id}, ignoring message")
+            return
+        
+        user_data_entry = user_data[user_id]
+        logger.info(f"User data found: {user_data_entry}")
+        
+        # Если есть страна, но нет типа скриншота - пользователь должен выбрать тип
+        if 'country' in user_data_entry and 'screenshot_type' not in user_data_entry:
+            logger.info("User has country but no screenshot type, should select type")
+            await update.message.reply_text(
+                "Пожалуйста, выберите тип скриншота из кнопок выше."
+            )
+            return
+        
+        # Если есть страна и тип, но нет аккаунта - это ввод аккаунта
+        if 'country' in user_data_entry and 'screenshot_type' in user_data_entry and 'account' not in user_data_entry:
+            logger.info("Processing account input")
+            try:
+                await account_received(update, context)
+            except Exception as e:
+                logger.error(f"Error in account_received from fallback handler: {e}", exc_info=True)
+                await update.message.reply_text("❌ Произошла ошибка. Попробуйте /start")
+            return
+        
+        # Если есть аккаунт, но нет суммы - это ввод суммы
+        if 'account' in user_data_entry and 'amount' not in user_data_entry:
+            logger.info("Processing amount input")
+            try:
+                await amount_received(update, context)
+            except Exception as e:
+                logger.error(f"Error in amount_received from fallback handler: {e}", exc_info=True)
+                await update.message.reply_text("❌ Произошла ошибка. Попробуйте /start")
+            return
+        
+        logger.warning(f"Unhandled message state for user {user_id}")
+    
+    # Добавляем обработчик сообщений с низким приоритетом (group=1)
+    # Он будет работать только если ConversationHandler не обработал сообщение
+    app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message_fallback), group=1)
+    
     # Добавляем обработчик ошибок
     app.add_error_handler(error_handler)
     
