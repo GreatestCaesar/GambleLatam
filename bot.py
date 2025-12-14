@@ -417,7 +417,9 @@ async def generate_screenshot(user_id: int) -> str:
                 '/usr/bin/chromium',
                 '/usr/bin/chromium-browser',
                 '/usr/bin/google-chrome',
-                '/usr/bin/google-chrome-stable'
+                '/usr/bin/google-chrome-stable',
+                '/usr/bin/chrome',
+                '/snap/bin/chromium'
             ]
             
             system_browser_found = False
@@ -426,6 +428,7 @@ async def generate_screenshot(user_id: int) -> str:
                     logger.info(f"Found system browser at: {browser_path}")
                     system_browser_found = True
                     try:
+                        # Пробуем запустить с системным браузером
                         browser = await p.chromium.launch(
                             headless=True,
                             executable_path=browser_path,
@@ -435,10 +438,32 @@ async def generate_screenshot(user_id: int) -> str:
                         break
                     except Exception as e2:
                         logger.warning(f"Failed to launch system browser {browser_path}: {str(e2)[:200]}")
-                        continue
+                        # Пробуем без указания executable_path, но с другими параметрами
+                        try:
+                            browser = await p.chromium.launch(
+                                headless=True,
+                                args=launch_args + ['--disable-software-rasterizer']
+                            )
+                            logger.info(f"Browser launched with alternative method")
+                            break
+                        except:
+                            continue
             
             if not system_browser_found:
                 logger.info("No system browsers found in standard locations")
+            
+            # Попытка 2.5: Попробовать использовать браузер без указания пути (может найти системный)
+            if not browser:
+                logger.info("Attempt 2.5: Trying to use system browser without explicit path...")
+                try:
+                    # Пробуем запустить без указания executable_path - может найти системный браузер
+                    browser = await p.chromium.launch(
+                        headless=True,
+                        args=launch_args
+                    )
+                    logger.info("Browser launched successfully (system browser auto-detected)")
+                except Exception as e2_5:
+                    logger.warning(f"Failed to auto-detect system browser: {str(e2_5)[:200]}")
             
             # Попытка 3: Установить браузеры в /tmp только если есть место
             if not browser:
@@ -488,7 +513,10 @@ async def generate_screenshot(user_id: int) -> str:
                             if result.stderr:
                                 logger.error(f"Error details: {result.stderr[:1000]}")
                     else:
-                        logger.error(f"Insufficient space in /tmp: {free_space_mb:.2f} MB (need at least 300 MB)")
+                        logger.error(f"Insufficient space in /tmp: {free_space_mb:.2f} MB (need at least 400 MB)")
+                        logger.error("Cannot install browsers - not enough space in /tmp")
+                        logger.error("This is a limitation of Vercel serverless environment")
+                        logger.error("Playwright browsers require ~300-400MB of disk space")
                 except Exception as e3:
                     logger.error(f"Error during attempt 3 (install in /tmp): {e3}", exc_info=True)
         
