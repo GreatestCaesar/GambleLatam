@@ -1,5 +1,6 @@
 def handler(request):
     return {
         "statusCode": 200,
-        "body": '{"test": "ok"}'
+        "body": '{"test": "ok", "location": "root"}'
     }
+
