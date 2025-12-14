@@ -70,12 +70,21 @@ vercel --prod
 
 ### Шаг 1: Проверьте, что endpoint работает
 
+**Важно:** URL должен быть точно `https://your-project.vercel.app/api` (без слеша в конце)
+
 Откройте в браузере:
 ```
 https://your-project.vercel.app/api
 ```
 
 Должен вернуться JSON: `{"status": "ok", "service": "Telegram Bot Webhook", "message": "Bot is running"}`
+
+**Если получаете 404:**
+
+1. Проверьте, что файл `api/index.py` существует
+2. Проверьте логи деплоя в Vercel Dashboard
+3. Попробуйте тестовый endpoint: `https://your-project.vercel.app/api/test`
+4. Убедитесь, что в Vercel Dashboard проект правильно задеплоен
 
 ### Шаг 2: Установите webhook
 
