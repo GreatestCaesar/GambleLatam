@@ -126,10 +126,24 @@ class handler(BaseHTTPRequestHandler):
                 self.wfile.write(json.dumps({"ok": False, "error": f"Failed to create Update: {str(e)}"}).encode())
                 return
             
-            if update and update.effective_user:
-                user_id = update.effective_user.id
-                logger.info(f"Processing update for user_id: {user_id}, username: {update.effective_user.username}")
-                
+            # Проверяем тип обновления
+            update_type = None
+            user_id = None
+            
+            if update:
+                if update.message:
+                    update_type = "message"
+                    user_id = update.message.from_user.id if update.message.from_user else None
+                elif update.callback_query:
+                    update_type = "callback_query"
+                    user_id = update.callback_query.from_user.id if update.callback_query.from_user else None
+                elif update.effective_user:
+                    update_type = "other"
+                    user_id = update.effective_user.id
+            
+            logger.info(f"Processing update {update.update_id if update else 'None'}, type: {update_type}, user_id: {user_id}")
+            
+            if user_id:
                 # Проверяем доступ пользователя
                 if not check_user_access:
                     logger.error("check_user_access function is not available!")
@@ -148,6 +162,8 @@ class handler(BaseHTTPRequestHandler):
                     return
                 
                 logger.info(f"Access granted for user {user_id}")
+            else:
+                logger.warning(f"Update without user_id: {update_type}")
                 
                 # Обрабатываем обновление асинхронно
                 try:
@@ -156,12 +172,22 @@ class handler(BaseHTTPRequestHandler):
                     asyncio.set_event_loop(loop)
                     
                     async def process_update_async():
-                        # Инициализируем приложение в этом event loop
-                        await application.initialize()
-                        # Обрабатываем обновление
-                        await application.process_update(update)
-                        # Закрываем приложение
-                        await application.shutdown()
+                        try:
+                            # Инициализируем приложение в этом event loop
+                            await application.initialize()
+                            logger.info(f"Application initialized, processing update {update.update_id}")
+                            # Обрабатываем обновление
+                            await application.process_update(update)
+                            logger.info(f"Update {update.update_id} processed successfully")
+                        except Exception as e:
+                            logger.error(f"Error in process_update_async: {e}", exc_info=True)
+                            raise
+                        finally:
+                            # Закрываем приложение
+                            try:
+                                await application.shutdown()
+                            except Exception as e:
+                                logger.error(f"Error shutting down application: {e}")
                     
                     # Запускаем обработку обновления
                     loop.run_until_complete(process_update_async())

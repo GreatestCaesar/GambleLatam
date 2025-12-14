@@ -102,61 +102,95 @@ def check_user_access(user_id: int) -> bool:
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Обработчик команды /start"""
-    user_id = update.message.from_user.id
-    
-    # Сбрасываем предыдущее состояние пользователя
-    if user_id in user_data:
-        del user_data[user_id]
-    
-    # Сбрасываем состояние разговора
-    if context.user_data:
-        context.user_data.clear()
-    
-    keyboard = [
-        [InlineKeyboardButton("🇨🇴 Colombia", callback_data='country_colombia')],
-        [InlineKeyboardButton("🇵🇾 Paraguay", callback_data='country_paraguay')],
-        [InlineKeyboardButton("🇧🇴 Bolivia", callback_data='country_bolivia')],
-        [InlineKeyboardButton("🇦🇷 Argentina", callback_data='country_argentina')],
-        [InlineKeyboardButton("🇪🇨 Ecuador", callback_data='country_ecuador')],
-    ]
-    reply_markup = InlineKeyboardMarkup(keyboard)
-    
-    await update.message.reply_text(
-        "👋 Добро пожаловать!\n\n"
-        "Выберите страну для генерации скриншота:",
-        reply_markup=reply_markup
-    )
-    return SELECTING_COUNTRY
+    try:
+        user_id = update.message.from_user.id
+        logger.info(f"Start command received from user {user_id}")
+        
+        # Сбрасываем предыдущее состояние пользователя
+        if user_id in user_data:
+            del user_data[user_id]
+        
+        # Сбрасываем состояние разговора
+        if context.user_data:
+            context.user_data.clear()
+        
+        keyboard = [
+            [InlineKeyboardButton("🇨🇴 Colombia", callback_data='country_colombia')],
+            [InlineKeyboardButton("🇵🇾 Paraguay", callback_data='country_paraguay')],
+            [InlineKeyboardButton("🇧🇴 Bolivia", callback_data='country_bolivia')],
+            [InlineKeyboardButton("🇦🇷 Argentina", callback_data='country_argentina')],
+            [InlineKeyboardButton("🇪🇨 Ecuador", callback_data='country_ecuador')],
+        ]
+        reply_markup = InlineKeyboardMarkup(keyboard)
+        
+        await update.message.reply_text(
+            "👋 Добро пожаловать!\n\n"
+            "Выберите страну для генерации скриншота:",
+            reply_markup=reply_markup
+        )
+        logger.info(f"Start message sent to user {user_id}, returning SELECTING_COUNTRY")
+        return SELECTING_COUNTRY
+    except Exception as e:
+        logger.error(f"Error in start: {e}", exc_info=True)
+        try:
+            await update.message.reply_text("❌ Произошла ошибка. Попробуйте снова.")
+        except:
+            pass
+        return SELECTING_COUNTRY
 
 
 async def country_selected(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Обработчик выбора страны"""
-    query = update.callback_query
-    await query.answer()
-    
-    country_code = query.data.split('_')[1]
-    country_info = COUNTRIES[country_code]
-    
-    user_id = query.from_user.id
-    user_data[user_id] = {
-        'country': country_code,
-        'country_info': country_info
-    }
-    
-    # Показываем кнопки выбора типа скриншота
-    keyboard = [
-        [InlineKeyboardButton("⏳ Ожидание отправки", callback_data='type_waiting')],
-        [InlineKeyboardButton("❌ Ошибка отправки выигрыша", callback_data='type_error')],
-    ]
-    reply_markup = InlineKeyboardMarkup(keyboard)
-    
-    await query.edit_message_text(
-        f"✅ Выбрана страна: {country_info['flag']} {country_info['name']}\n"
-        f"Валюта: {country_info['currency']}\n\n"
-        "Выберите тип скриншота:",
-        reply_markup=reply_markup
-    )
-    return SELECTING_TYPE
+    try:
+        query = update.callback_query
+        if not query:
+            logger.error("country_selected called without callback_query")
+            return SELECTING_COUNTRY
+        
+        logger.info(f"Country selected: callback_data={query.data}, user_id={query.from_user.id}")
+        
+        await query.answer()
+        
+        country_code = query.data.split('_')[1]
+        logger.info(f"Parsed country_code: {country_code}")
+        
+        if country_code not in COUNTRIES:
+            logger.error(f"Unknown country_code: {country_code}")
+            await query.edit_message_text(f"❌ Ошибка: неизвестная страна")
+            return SELECTING_COUNTRY
+        
+        country_info = COUNTRIES[country_code]
+        
+        user_id = query.from_user.id
+        user_data[user_id] = {
+            'country': country_code,
+            'country_info': country_info
+        }
+        logger.info(f"User data saved for user {user_id}: country={country_code}")
+        
+        # Показываем кнопки выбора типа скриншота
+        keyboard = [
+            [InlineKeyboardButton("⏳ Ожидание отправки", callback_data='type_waiting')],
+            [InlineKeyboardButton("❌ Ошибка отправки выигрыша", callback_data='type_error')],
+        ]
+        reply_markup = InlineKeyboardMarkup(keyboard)
+        
+        await query.edit_message_text(
+            f"✅ Выбрана страна: {country_info['flag']} {country_info['name']}\n"
+            f"Валюта: {country_info['currency']}\n\n"
+            "Выберите тип скриншота:",
+            reply_markup=reply_markup
+        )
+        logger.info(f"Message updated for user {user_id}, returning SELECTING_TYPE")
+        return SELECTING_TYPE
+    except Exception as e:
+        logger.error(f"Error in country_selected: {e}", exc_info=True)
+        if query:
+            try:
+                await query.answer("❌ Произошла ошибка. Попробуйте снова.")
+            except:
+                pass
+        return SELECTING_COUNTRY
 
 
 async def type_selected(update: Update, context: ContextTypes.DEFAULT_TYPE):
