@@ -49,6 +49,17 @@ def handler(request):
     Returns:
         dict: Response with statusCode, headers, and body
     """
+    # Сначала логируем, что функция вызвана
+    try:
+        logger.info("=" * 50)
+        logger.info("Handler called!")
+        logger.info(f"Request type: {type(request)}")
+        if isinstance(request, dict):
+            logger.info(f"Request method: {request.get('method', 'unknown')}")
+        logger.info("=" * 50)
+    except:
+        pass  # Если логирование не работает, продолжаем
+    
     try:
         # Логируем запрос для отладки
         logger.info(f"Received request: {type(request)}, method: {request.get('method') if isinstance(request, dict) else 'unknown'}")

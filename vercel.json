@@ -8,6 +8,9 @@
     },
     "api/hello.py": {
       "maxDuration": 10
+    },
+    "api/status.py": {
+      "maxDuration": 10
     }
   }
 }
