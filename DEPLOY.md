@@ -72,19 +72,40 @@ vercel --prod
 
 **Важно:** URL должен быть точно `https://your-project.vercel.app/api` (без слеша в конце)
 
-Откройте в браузере:
-```
-https://your-project.vercel.app/api
-```
+**После успешного деплоя:**
 
-Должен вернуться JSON: `{"status": "ok", "service": "Telegram Bot Webhook", "message": "Bot is running"}`
+1. Откройте в браузере:
+   ```
+   https://your-project.vercel.app/api
+   ```
+
+2. Должен вернуться JSON: `{"status": "ok", "service": "Telegram Bot Webhook", "message": "Bot is running"}`
 
 **Если получаете 404:**
 
-1. Проверьте, что файл `api/index.py` существует
-2. Проверьте логи деплоя в Vercel Dashboard
-3. Попробуйте тестовый endpoint: `https://your-project.vercel.app/api/test`
-4. Убедитесь, что в Vercel Dashboard проект правильно задеплоен
+1. **Проверьте в Vercel Dashboard:**
+   - Проект → Functions
+   - Должна быть функция `api/index.py`
+   - Если её нет, функция не задеплоилась
+
+2. **Проверьте логи функции:**
+   - Проект → Functions → api/index.py → Logs
+   - Отправьте GET запрос и проверьте, появляются ли логи
+
+3. **Проверьте тестовый endpoint:**
+   ```
+   https://your-project.vercel.app/api/test
+   ```
+   Если это работает, значит Python функции работают
+
+4. **Проверьте правильность домена:**
+   - В Vercel Dashboard → Settings → Domains
+   - Убедитесь, что используете правильный домен
+
+5. **Попробуйте перезапустить деплой:**
+   ```bash
+   vercel --prod --force
+   ```
 
 ### Шаг 2: Установите webhook
 
