@@ -45,5 +45,6 @@ COPY . .
 EXPOSE 5000
 
 # Запускаем приложение через gunicorn для production
-CMD ["gunicorn", "--bind", "0.0.0.0:5000", "--workers", "2", "--threads", "2", "--timeout", "120", "--access-logfile", "-", "webhook:app"]
+# Используем 1 worker, так как asyncio event loop не работает хорошо с несколькими workers
+CMD ["gunicorn", "--bind", "0.0.0.0:5000", "--workers", "1", "--threads", "4", "--timeout", "120", "--access-logfile", "-", "--error-logfile", "-", "--log-level", "info", "webhook:app"]
 

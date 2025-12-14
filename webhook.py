@@ -42,15 +42,30 @@ def get_application():
     
     return application, loop
 
-@app.route('/webhook', methods=['POST'])
+@app.route('/webhook', methods=['POST', 'GET'])
 def webhook():
     """Обработка webhook запросов от Telegram"""
+    logger.info(f"Webhook endpoint called: method={request.method}, path={request.path}")
+    
+    if request.method == 'GET':
+        # Для GET запросов возвращаем информацию о webhook
+        return jsonify({
+            "status": "ok",
+            "endpoint": "/webhook",
+            "methods": ["POST"],
+            "message": "Send POST requests to this endpoint"
+        })
+    
     try:
         # Получаем данные запроса
+        logger.info(f"Request headers: {dict(request.headers)}")
+        logger.info(f"Request content type: {request.content_type}")
+        
         data = request.get_json()
         
         if not data:
             logger.warning("Empty request received")
+            logger.warning(f"Request data: {request.get_data()[:200]}")
             return jsonify({"ok": False, "error": "Empty request"}), 400
         
         logger.info(f"Update received: {data.get('update_id', 'unknown')}")
