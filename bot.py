@@ -409,9 +409,10 @@ async def generate_screenshot(user_id: int) -> str:
             )
             logger.info("Browser launched successfully using build-time installed browsers")
         except Exception as e1:
-            logger.warning(f"Failed to launch with default path: {e1}")
+            logger.warning(f"Attempt 1 failed - default path: {str(e1)[:200]}")
             
             # Попытка 2: Проверить системные браузеры
+            logger.info("Attempt 2: Checking for system browsers...")
             system_browsers = [
                 '/usr/bin/chromium',
                 '/usr/bin/chromium-browser',
@@ -419,8 +420,11 @@ async def generate_screenshot(user_id: int) -> str:
                 '/usr/bin/google-chrome-stable'
             ]
             
+            system_browser_found = False
             for browser_path in system_browsers:
                 if os.path.exists(browser_path):
+                    logger.info(f"Found system browser at: {browser_path}")
+                    system_browser_found = True
                     try:
                         browser = await p.chromium.launch(
                             headless=True,
@@ -430,11 +434,15 @@ async def generate_screenshot(user_id: int) -> str:
                         logger.info(f"Browser launched successfully using system browser: {browser_path}")
                         break
                     except Exception as e2:
-                        logger.warning(f"Failed to launch system browser {browser_path}: {e2}")
+                        logger.warning(f"Failed to launch system browser {browser_path}: {str(e2)[:200]}")
                         continue
+            
+            if not system_browser_found:
+                logger.info("No system browsers found in standard locations")
             
             # Попытка 3: Установить браузеры в /tmp только если есть место
             if not browser:
+                logger.info("Attempt 3: Checking available space in /tmp for browser installation...")
                 try:
                     # Проверяем доступное место в /tmp (нужно минимум 200MB для Chromium)
                     import shutil
@@ -443,12 +451,13 @@ async def generate_screenshot(user_id: int) -> str:
                     logger.info(f"Available space in /tmp: {free_space_mb:.2f} MB")
                     
                     if free_space_mb > 300:  # Нужно минимум 300MB свободного места
-                        logger.info("Attempting to install browsers in /tmp (sufficient space available)")
+                        logger.info("Sufficient space available. Installing browsers in /tmp...")
                         browsers_dir = '/tmp/.cache/ms-playwright'
                         os.makedirs(browsers_dir, exist_ok=True)
                         os.environ['PLAYWRIGHT_BROWSERS_PATH'] = browsers_dir
                         
                         # Устанавливаем только chromium (самый легковесный)
+                        logger.info("Running: python3 -m playwright install chromium")
                         result = subprocess.run(
                             ['python3', '-m', 'playwright', 'install', 'chromium'],
                             check=False,
@@ -458,22 +467,33 @@ async def generate_screenshot(user_id: int) -> str:
                             env={**os.environ, 'PLAYWRIGHT_BROWSERS_PATH': browsers_dir}
                         )
                         
+                        logger.info(f"Installation exit code: {result.returncode}")
+                        if result.stdout:
+                            logger.info(f"Installation stdout: {result.stdout[:500]}")
+                        if result.stderr:
+                            logger.warning(f"Installation stderr: {result.stderr[:500]}")
+                        
                         if result.returncode == 0:
                             logger.info("Browsers installed successfully in /tmp")
-                            browser = await p.chromium.launch(
-                                headless=True,
-                                args=launch_args
-                            )
-                            logger.info("Browser launched successfully after installation in /tmp")
+                            try:
+                                browser = await p.chromium.launch(
+                                    headless=True,
+                                    args=launch_args
+                                )
+                                logger.info("Browser launched successfully after installation in /tmp")
+                            except Exception as launch_error:
+                                logger.error(f"Failed to launch browser after installation: {launch_error}")
                         else:
-                            logger.error(f"Failed to install browsers: {result.stderr[:500]}")
+                            logger.error(f"Failed to install browsers. Exit code: {result.returncode}")
+                            if result.stderr:
+                                logger.error(f"Error details: {result.stderr[:1000]}")
                     else:
                         logger.error(f"Insufficient space in /tmp: {free_space_mb:.2f} MB (need at least 300 MB)")
                 except Exception as e3:
-                    logger.error(f"Failed to install/launch browser: {e3}", exc_info=True)
+                    logger.error(f"Error during attempt 3 (install in /tmp): {e3}", exc_info=True)
         
         if not browser:
-            logger.error("All browser launch attempts failed")
+            logger.error("All browser launch attempts failed. Cannot generate screenshot.")
             return None
         # Устанавливаем нормальный размер viewport
         page = await browser.new_page(viewport={'width': 1280, 'height': 800})
