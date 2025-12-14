@@ -182,12 +182,28 @@ async def country_selected(update: Update, context: ContextTypes.DEFAULT_TYPE):
         ]
         reply_markup = InlineKeyboardMarkup(keyboard)
         
-        await query.edit_message_text(
-            f"✅ Выбрана страна: {country_info['flag']} {country_info['name']}\n"
-            f"Валюта: {country_info['currency']}\n\n"
-            "Выберите тип скриншота:",
-            reply_markup=reply_markup
-        )
+        # Пытаемся отредактировать сообщение, игнорируя ошибку "Message is not modified"
+        try:
+            await query.edit_message_text(
+                f"✅ Выбрана страна: {country_info['flag']} {country_info['name']}\n"
+                f"Валюта: {country_info['currency']}\n\n"
+                "Выберите тип скриншота:",
+                reply_markup=reply_markup
+            )
+        except Exception as e:
+            # Игнорируем ошибку "Message is not modified" - это нормально, если сообщение уже такое же
+            if "not modified" not in str(e).lower():
+                logger.warning(f"Error editing message in country_selected: {e}")
+                # Если не удалось отредактировать, просто отправляем новое сообщение
+                try:
+                    await query.message.reply_text(
+                        f"✅ Выбрана страна: {country_info['flag']} {country_info['name']}\n"
+                        f"Валюта: {country_info['currency']}\n\n"
+                        "Выберите тип скриншота:",
+                        reply_markup=reply_markup
+                    )
+                except Exception:
+                    pass
         logger.info(f"Message updated for user {user_id}, returning SELECTING_TYPE")
         return SELECTING_TYPE
     except Exception as e:
@@ -417,6 +433,20 @@ async def generate_screenshot(user_id: int) -> str:
                 
                 if result.returncode == 0:
                     logger.info("Browsers installed successfully in /tmp")
+                    # Пытаемся установить системные зависимости
+                    logger.info("Installing system dependencies for browsers...")
+                    deps_result = subprocess.run(
+                        ['python3', '-m', 'playwright', 'install-deps', 'chromium'],
+                        check=False,
+                        timeout=180,
+                        capture_output=True,
+                        text=True
+                    )
+                    if deps_result.returncode == 0:
+                        logger.info("System dependencies installed successfully")
+                    else:
+                        logger.warning(f"Failed to install system dependencies: {deps_result.stderr[:500]}")
+                        logger.warning("Browser may still work, but some features might be limited")
                 else:
                     logger.error(f"Failed to install browsers: {result.stderr[:500]}")
             else:
