@@ -1,5 +1,4 @@
 #!/bin/bash
-# Скрипт для установки браузеров Playwright при сборке
-pip install playwright
-playwright install chromium
-
+# Скрипт для установки зависимостей и браузеров Playwright
+pip install -r requirements.txt
+python -m playwright install chromium
