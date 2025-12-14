@@ -61,6 +61,9 @@ class handler(BaseHTTPRequestHandler):
     def do_POST(self):
         """Обработка POST запросов от Telegram"""
         try:
+            logger.info("=" * 50)
+            logger.info("New POST request received")
+            
             # Логируем наличие переменных окружения для диагностики
             env_vars = [k for k in os.environ.keys() if 'TELEGRAM' in k or 'ALLOWED' in k]
             logger.info(f"Relevant env vars found: {env_vars}")
@@ -70,6 +73,7 @@ class handler(BaseHTTPRequestHandler):
             
             if application_factory is None:
                 logger.error("Application factory not available")
+                logger.error(f"init_application available: {init_application is not None}")
                 self.send_response(500)
                 self.send_header('Content-Type', 'application/json')
                 self.end_headers()
