@@ -311,13 +311,14 @@ async def generate_screenshot(user_id: int) -> str:
     is_error = (screenshot_type == 'error')
     html_content = generate_html(country_info, account, amount, is_error)
     
-    # Сохраняем во временный файл
-    html_path = f"temp_{user_id}.html"
+    # Сохраняем во временный файл в /tmp (единственная доступная для записи директория в serverless)
+    tmp_dir = '/tmp'
+    html_path = os.path.join(tmp_dir, f"temp_{user_id}.html")
     with open(html_path, 'w', encoding='utf-8') as f:
         f.write(html_content)
     
     # Генерируем скриншот с помощью Playwright
-    screenshot_path = f"screenshot_{user_id}.png"
+    screenshot_path = os.path.join(tmp_dir, f"screenshot_{user_id}.png")
     
     async with async_playwright() as p:
         browser = await p.chromium.launch(headless=True)
