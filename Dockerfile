@@ -44,6 +44,6 @@ COPY . .
 # Открываем порт
 EXPOSE 5000
 
-# Запускаем приложение
-CMD ["python", "webhook.py"]
+# Запускаем приложение через gunicorn для production
+CMD ["gunicorn", "--bind", "0.0.0.0:5000", "--workers", "2", "--threads", "2", "--timeout", "120", "--access-logfile", "-", "webhook:app"]
 
