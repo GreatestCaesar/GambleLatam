@@ -11,6 +11,9 @@
     },
     "api/status.py": {
       "maxDuration": 10
+    },
+    "api/minimal.py": {
+      "maxDuration": 10
     }
   }
 }

@@ -2,18 +2,27 @@
 Простой endpoint для проверки работы Vercel Python
 Без импортов из родительской директории
 """
-import json
 
 def handler(request):
     """Простой handler для проверки"""
-    return {
-        "statusCode": 200,
-        "headers": {"Content-Type": "application/json"},
-        "body": json.dumps({
-            "status": "ok",
-            "message": "Vercel Python is working!",
-            "endpoint": "/api/status",
-            "method": request.get('method', 'GET') if isinstance(request, dict) else 'GET'
-        })
-    }
-
+    try:
+        # Получаем метод
+        method = 'GET'
+        if isinstance(request, dict):
+            method = request.get('method', 'GET')
+        
+        return {
+            "statusCode": 200,
+            "headers": {
+                "Content-Type": "application/json"
+            },
+            "body": '{"status": "ok", "message": "Vercel Python is working!", "endpoint": "/api/status", "method": "' + method + '"}'
+        }
+    except Exception as e:
+        return {
+            "statusCode": 500,
+            "headers": {
+                "Content-Type": "application/json"
+            },
+            "body": '{"error": "' + str(e) + '"}'
+        }
