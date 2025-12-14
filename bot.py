@@ -1072,6 +1072,27 @@ def init_application():
     # Добавляем обработчик ошибок
     application.add_error_handler(error_handler)
     
+    # Инициализируем приложение (требуется для python-telegram-bot 20.x)
+    # Для webhook нужно инициализировать, но не запускать polling
+    try:
+        # Создаем event loop для инициализации
+        import asyncio
+        try:
+            loop = asyncio.get_event_loop()
+            if loop.is_closed():
+                loop = asyncio.new_event_loop()
+                asyncio.set_event_loop(loop)
+        except RuntimeError:
+            loop = asyncio.new_event_loop()
+            asyncio.set_event_loop(loop)
+        
+        # Инициализируем приложение
+        if not loop.is_running():
+            loop.run_until_complete(application.initialize())
+    except Exception as e:
+        logger.warning(f"Could not initialize application synchronously: {e}")
+        # Для webhook инициализация будет выполнена при первом запросе
+    
     return application
 
 

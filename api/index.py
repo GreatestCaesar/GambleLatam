@@ -124,8 +124,14 @@ class handler(BaseHTTPRequestHandler):
                         loop = asyncio.new_event_loop()
                         asyncio.set_event_loop(loop)
                     
+                    # Убеждаемся, что приложение инициализировано
+                    async def ensure_initialized_and_process():
+                        if not application._initialized:
+                            await application.initialize()
+                        await application.process_update(update)
+                    
                     # Запускаем обработку обновления
-                    loop.run_until_complete(application.process_update(update))
+                    loop.run_until_complete(ensure_initialized_and_process())
                     logger.info(f"Processed update for user {user_id}")
                     
                 except Exception as e:
