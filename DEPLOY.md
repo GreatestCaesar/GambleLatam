@@ -64,7 +64,20 @@ vercel --prod
 
 ## Настройка Webhook
 
-После деплоя получите URL вашего API endpoint (например: `https://your-project.vercel.app/api`)
+После деплоя получите URL вашего API endpoint. 
+
+**Важно:** URL должен быть в формате `https://your-project.vercel.app/api` (без `/index` в конце)
+
+### Шаг 1: Проверьте, что endpoint работает
+
+Откройте в браузере:
+```
+https://your-project.vercel.app/api
+```
+
+Должен вернуться JSON: `{"status": "ok", "service": "Telegram Bot Webhook", "message": "Bot is running"}`
+
+### Шаг 2: Установите webhook
 
 Затем установите webhook для вашего бота:
 
@@ -75,6 +88,28 @@ curl -X POST "https://api.telegram.org/bot<YOUR_BOT_TOKEN>/setWebhook?url=https:
 Или через браузер:
 ```
 https://api.telegram.org/bot<YOUR_BOT_TOKEN>/setWebhook?url=https://your-project.vercel.app/api
+```
+
+**Замените:**
+- `<YOUR_BOT_TOKEN>` на ваш токен бота
+- `your-project.vercel.app` на ваш домен Vercel
+
+### Шаг 3: Проверьте статус webhook
+
+```bash
+curl "https://api.telegram.org/bot<YOUR_BOT_TOKEN>/getWebhookInfo"
+```
+
+Должно вернуться:
+```json
+{
+  "ok": true,
+  "result": {
+    "url": "https://your-project.vercel.app/api",
+    "has_custom_certificate": false,
+    "pending_update_count": 0
+  }
+}
 ```
 
 ## Проверка работы
@@ -89,22 +124,81 @@ curl "https://api.telegram.org/bot<YOUR_BOT_TOKEN>/getWebhookInfo"
 
 ## Устранение проблем
 
+### Ошибка 404 "Not Found" при установке webhook:
+
+**Причины и решения:**
+
+1. **Неправильный URL:**
+   - ✅ Правильно: `https://your-project.vercel.app/api`
+   - ❌ Неправильно: `https://your-project.vercel.app/api/index`
+   - ❌ Неправильно: `https://your-project.vercel.app/api/`
+
+2. **Функция не задеплоилась:**
+   - Проверьте логи деплоя в Vercel Dashboard
+   - Убедитесь, что файл `api/index.py` существует
+   - Проверьте, что `vercel.json` настроен правильно
+
+3. **Проверьте, что endpoint доступен:**
+   ```bash
+   curl https://your-project.vercel.app/api
+   ```
+   Должен вернуть JSON с `"status": "ok"`
+
+4. **Проверьте структуру проекта:**
+   ```
+   .
+   ├── api/
+   │   └── index.py
+   ├── bot.py
+   ├── vercel.json
+   └── requirements.txt
+   ```
+
+5. **Перезапустите деплой:**
+   ```bash
+   vercel --prod --force
+   ```
+
 ### Бот не отвечает:
 
-1. Проверьте, что webhook установлен правильно
-2. Проверьте логи в Vercel Dashboard
+1. Проверьте, что webhook установлен правильно:
+   ```bash
+   curl "https://api.telegram.org/bot<TOKEN>/getWebhookInfo"
+   ```
+
+2. Проверьте логи в Vercel Dashboard:
+   - Перейдите в проект → Functions → api/index.py → Logs
+
 3. Убедитесь, что ваш Telegram ID в списке `ALLOWED_TELEGRAM_IDS`
 
-### Ошибка доступа:
+4. Проверьте переменные окружения в Vercel Dashboard
+
+### Ошибка доступа (403):
 
 - Убедитесь, что ваш Telegram ID добавлен в переменную `ALLOWED_TELEGRAM_IDS`
 - ID должен быть числом без пробелов (можно через запятую)
+- Пример: `ALLOWED_TELEGRAM_IDS=123456789,987654321`
 
 ### Ошибки деплоя:
 
 - Убедитесь, что все зависимости в `requirements.txt`
-- Проверьте, что Python версия 3.11 поддерживается
 - Проверьте логи сборки в Vercel Dashboard
+- Убедитесь, что `bot.py` находится в корне проекта (не в `api/`)
+
+### Проверка работы endpoint:
+
+1. **GET запрос (должен работать):**
+   ```bash
+   curl https://your-project.vercel.app/api
+   ```
+
+2. **Проверка webhook:**
+   ```bash
+   curl "https://api.telegram.org/bot<TOKEN>/getWebhookInfo"
+   ```
+
+3. **Проверка логов:**
+   - Vercel Dashboard → Your Project → Functions → api/index.py → Logs
 
 ## Локальная разработка
 

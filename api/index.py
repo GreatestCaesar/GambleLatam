@@ -34,7 +34,7 @@ def handler(request):
     Vercel serverless function handler
     
     Args:
-        request: Request object from Vercel
+        request: Request dict from Vercel with 'method', 'body', 'headers', etc.
         
     Returns:
         dict: Response with statusCode, headers, and body
@@ -47,8 +47,11 @@ def handler(request):
             "body": json.dumps({"ok": False, "error": "Application not initialized"})
         }
     
+    # Получаем метод запроса
+    method = request.get('method', 'GET') if isinstance(request, dict) else 'GET'
+    
     # Обработка GET запросов (для проверки работоспособности)
-    if request.method == 'GET':
+    if method == 'GET':
         return {
             "statusCode": 200,
             "headers": {"Content-Type": "application/json"},
@@ -60,10 +63,17 @@ def handler(request):
         }
     
     # Обработка POST запросов от Telegram
-    if request.method == 'POST':
+    if method == 'POST':
         try:
             # Получаем данные запроса
-            body = request.get_json()
+            # В Vercel body приходит как строка JSON
+            body_str = request.get('body', '{}') if isinstance(request, dict) else '{}'
+            
+            try:
+                body = json.loads(body_str) if isinstance(body_str, str) else body_str
+            except (json.JSONDecodeError, TypeError):
+                logger.error(f"Failed to parse body: {body_str}")
+                body = {}
             
             if not body:
                 logger.warning("Empty request body")
@@ -93,6 +103,9 @@ def handler(request):
                     # Получаем или создаем event loop
                     try:
                         loop = asyncio.get_event_loop()
+                        if loop.is_closed():
+                            loop = asyncio.new_event_loop()
+                            asyncio.set_event_loop(loop)
                     except RuntimeError:
                         loop = asyncio.new_event_loop()
                         asyncio.set_event_loop(loop)
