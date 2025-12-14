@@ -371,44 +371,109 @@ async def generate_screenshot(user_id: int) -> str:
     # Генерируем скриншот с помощью Playwright
     screenshot_path = os.path.join(tmp_dir, f"screenshot_{user_id}.png")
     
-    # Используем браузеры, установленные при сборке через buildCommand
-    # НЕ пытаемся устанавливать браузеры во время выполнения - это требует места в /tmp
-    # Браузеры должны быть установлены при сборке и доступны во время выполнения
+    # В Vercel serverless браузеры, установленные при сборке, могут быть недоступны
+    # Пытаемся использовать системный браузер или установить в доступную директорию
+    # Проверяем доступное место в /tmp перед установкой
     
+    # Сначала пытаемся использовать браузеры, установленные при сборке
+    # (они могут быть в системной директории или в домашней директории пользователя сборки)
     async with async_playwright() as p:
-        # Запускаем браузер с параметрами для serverless окружения
-        # Используем минимальные настройки для экономии ресурсов
+        browser = None
+        launch_args = [
+            '--no-sandbox',
+            '--disable-setuid-sandbox',
+            '--disable-dev-shm-usage',
+            '--disable-gpu',
+            '--single-process',
+            '--disable-software-rasterizer',
+            '--disable-extensions',
+            '--disable-background-networking',
+            '--disable-background-timer-throttling',
+            '--disable-renderer-backgrounding',
+            '--disable-backgrounding-occluded-windows',
+            '--disable-ipc-flooding-protection',
+            '--disable-sync',
+            '--metrics-recording-only',
+            '--mute-audio',
+            '--no-first-run',
+            '--safebrowsing-disable-auto-update',
+            '--disable-default-apps',
+            '--disable-component-extensions-with-background-pages'
+        ]
+        
+        # Попытка 1: Использовать браузеры, установленные при сборке (стандартный путь)
         try:
             browser = await p.chromium.launch(
                 headless=True,
-                args=[
-                    '--no-sandbox',
-                    '--disable-setuid-sandbox',
-                    '--disable-dev-shm-usage',
-                    '--disable-gpu',
-                    '--single-process',
-                    '--disable-software-rasterizer',
-                    '--disable-extensions',
-                    '--disable-background-networking',
-                    '--disable-background-timer-throttling',
-                    '--disable-renderer-backgrounding',
-                    '--disable-backgrounding-occluded-windows',
-                    '--disable-ipc-flooding-protection',
-                    '--disable-sync',
-                    '--metrics-recording-only',
-                    '--mute-audio',
-                    '--no-first-run',
-                    '--safebrowsing-disable-auto-update',
-                    '--disable-default-apps',
-                    '--disable-component-extensions-with-background-pages'
-                ]
+                args=launch_args
             )
             logger.info("Browser launched successfully using build-time installed browsers")
-        except Exception as e:
-            logger.error(f"Failed to launch browser: {e}")
-            # Если браузеры не установлены при сборке, это критическая ошибка
-            # В Vercel браузеры должны устанавливаться через buildCommand
-            logger.error("Browsers were not installed during build. Check buildCommand in vercel.json")
+        except Exception as e1:
+            logger.warning(f"Failed to launch with default path: {e1}")
+            
+            # Попытка 2: Проверить системные браузеры
+            system_browsers = [
+                '/usr/bin/chromium',
+                '/usr/bin/chromium-browser',
+                '/usr/bin/google-chrome',
+                '/usr/bin/google-chrome-stable'
+            ]
+            
+            for browser_path in system_browsers:
+                if os.path.exists(browser_path):
+                    try:
+                        browser = await p.chromium.launch(
+                            headless=True,
+                            executable_path=browser_path,
+                            args=launch_args
+                        )
+                        logger.info(f"Browser launched successfully using system browser: {browser_path}")
+                        break
+                    except Exception as e2:
+                        logger.warning(f"Failed to launch system browser {browser_path}: {e2}")
+                        continue
+            
+            # Попытка 3: Установить браузеры в /tmp только если есть место
+            if not browser:
+                try:
+                    # Проверяем доступное место в /tmp (нужно минимум 200MB для Chromium)
+                    import shutil
+                    tmp_stat = shutil.disk_usage('/tmp')
+                    free_space_mb = tmp_stat.free / (1024 * 1024)
+                    logger.info(f"Available space in /tmp: {free_space_mb:.2f} MB")
+                    
+                    if free_space_mb > 300:  # Нужно минимум 300MB свободного места
+                        logger.info("Attempting to install browsers in /tmp (sufficient space available)")
+                        browsers_dir = '/tmp/.cache/ms-playwright'
+                        os.makedirs(browsers_dir, exist_ok=True)
+                        os.environ['PLAYWRIGHT_BROWSERS_PATH'] = browsers_dir
+                        
+                        # Устанавливаем только chromium (самый легковесный)
+                        result = subprocess.run(
+                            ['python3', '-m', 'playwright', 'install', 'chromium'],
+                            check=False,
+                            timeout=300,
+                            capture_output=True,
+                            text=True,
+                            env={**os.environ, 'PLAYWRIGHT_BROWSERS_PATH': browsers_dir}
+                        )
+                        
+                        if result.returncode == 0:
+                            logger.info("Browsers installed successfully in /tmp")
+                            browser = await p.chromium.launch(
+                                headless=True,
+                                args=launch_args
+                            )
+                            logger.info("Browser launched successfully after installation in /tmp")
+                        else:
+                            logger.error(f"Failed to install browsers: {result.stderr[:500]}")
+                    else:
+                        logger.error(f"Insufficient space in /tmp: {free_space_mb:.2f} MB (need at least 300 MB)")
+                except Exception as e3:
+                    logger.error(f"Failed to install/launch browser: {e3}", exc_info=True)
+        
+        if not browser:
+            logger.error("All browser launch attempts failed")
             return None
         # Устанавливаем нормальный размер viewport
         page = await browser.new_page(viewport={'width': 1280, 'height': 800})
