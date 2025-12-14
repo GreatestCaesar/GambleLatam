@@ -1172,6 +1172,51 @@ def init_application():
     
     app.add_handler(conv_handler)
     
+    # Добавляем отдельный обработчик для callback queries вне ConversationHandler
+    # Это нужно для serverless окружения, где состояние может теряться
+    # Этот обработчик будет работать как fallback, если ConversationHandler не обработал callback
+    async def handle_callback_query_fallback(update: Update, context: ContextTypes.DEFAULT_TYPE):
+        """Обработчик callback queries, который работает даже если ConversationHandler не находит состояние"""
+        query = update.callback_query
+        if not query:
+            return
+        
+        logger.info(f"Callback query received in fallback handler: {query.data}, user_id={query.from_user.id}")
+        
+        # Проверяем, является ли это callback для выбора страны
+        if query.data and query.data.startswith('country_'):
+            logger.info("Processing country selection in fallback handler")
+            try:
+                await query.answer()  # Отвечаем на callback сразу
+                await country_selected(update, context)
+            except Exception as e:
+                logger.error(f"Error in country_selected from fallback handler: {e}", exc_info=True)
+                try:
+                    await query.answer("❌ Произошла ошибка. Попробуйте /start", show_alert=True)
+                except:
+                    pass
+            return
+        
+        # Проверяем, является ли это callback для выбора типа
+        if query.data and query.data.startswith('type_'):
+            logger.info("Processing type selection in fallback handler")
+            try:
+                await query.answer()  # Отвечаем на callback сразу
+                await type_selected(update, context)
+            except Exception as e:
+                logger.error(f"Error in type_selected from fallback handler: {e}", exc_info=True)
+                try:
+                    await query.answer("❌ Произошла ошибка. Попробуйте /start", show_alert=True)
+                except:
+                    pass
+            return
+        
+        logger.warning(f"Unhandled callback query: {query.data}")
+    
+    # Добавляем обработчик callback queries с низким приоритетом (group=1)
+    # Он будет работать только если ConversationHandler (group=0 по умолчанию) не обработал callback
+    app.add_handler(CallbackQueryHandler(handle_callback_query_fallback), group=1)
+    
     # Добавляем обработчик ошибок
     app.add_error_handler(error_handler)
     
