@@ -371,11 +371,13 @@ async def generate_screenshot(user_id: int) -> str:
     # Генерируем скриншот с помощью Playwright
     screenshot_path = os.path.join(tmp_dir, f"screenshot_{user_id}.png")
     
-    # Устанавливаем переменные окружения для Playwright в serverless
-    os.environ.setdefault('PLAYWRIGHT_BROWSERS_PATH', '/tmp/.cache/ms-playwright')
+    # Используем браузеры, установленные при сборке через buildCommand
+    # НЕ пытаемся устанавливать браузеры во время выполнения - это требует места в /tmp
+    # Браузеры должны быть установлены при сборке и доступны во время выполнения
     
     async with async_playwright() as p:
         # Запускаем браузер с параметрами для serverless окружения
+        # Используем минимальные настройки для экономии ресурсов
         try:
             browser = await p.chromium.launch(
                 headless=True,
@@ -384,55 +386,30 @@ async def generate_screenshot(user_id: int) -> str:
                     '--disable-setuid-sandbox',
                     '--disable-dev-shm-usage',
                     '--disable-gpu',
-                    '--single-process'
+                    '--single-process',
+                    '--disable-software-rasterizer',
+                    '--disable-extensions',
+                    '--disable-background-networking',
+                    '--disable-background-timer-throttling',
+                    '--disable-renderer-backgrounding',
+                    '--disable-backgrounding-occluded-windows',
+                    '--disable-ipc-flooding-protection',
+                    '--disable-sync',
+                    '--metrics-recording-only',
+                    '--mute-audio',
+                    '--no-first-run',
+                    '--safebrowsing-disable-auto-update',
+                    '--disable-default-apps',
+                    '--disable-component-extensions-with-background-pages'
                 ]
             )
+            logger.info("Browser launched successfully using build-time installed browsers")
         except Exception as e:
             logger.error(f"Failed to launch browser: {e}")
-            # Пытаемся установить браузеры, если они не установлены
-            try:
-                logger.info("Attempting to install Playwright browsers...")
-                # Создаем директорию для браузеров
-                browsers_dir = '/tmp/.cache/ms-playwright'
-                os.makedirs(browsers_dir, exist_ok=True)
-                
-                # Используем subprocess с правильными параметрами для serverless
-                env = os.environ.copy()
-                env['PLAYWRIGHT_BROWSERS_PATH'] = browsers_dir
-                
-                result = subprocess.run(
-                    ['python', '-m', 'playwright', 'install', 'chromium'], 
-                    check=False, 
-                    timeout=180,
-                    capture_output=True,
-                    text=True,
-                    env=env
-                )
-                logger.info(f"Playwright install exit code: {result.returncode}")
-                logger.info(f"Playwright install stdout: {result.stdout[:500] if result.stdout else 'None'}")
-                if result.stderr:
-                    logger.warning(f"Playwright install stderr: {result.stderr[:500]}")
-                
-                if result.returncode != 0:
-                    logger.error(f"Playwright install failed with exit code {result.returncode}")
-                    return None
-                
-                # Пытаемся снова запустить браузер
-                logger.info("Retrying browser launch after installation")
-                browser = await p.chromium.launch(
-                    headless=True,
-                    args=[
-                        '--no-sandbox',
-                        '--disable-setuid-sandbox',
-                        '--disable-dev-shm-usage',
-                        '--disable-gpu',
-                        '--single-process'
-                    ]
-                )
-                logger.info("Browser launched successfully after installation")
-            except Exception as install_error:
-                logger.error(f"Failed to install/launch browser: {install_error}", exc_info=True)
-                return None
+            # Если браузеры не установлены при сборке, это критическая ошибка
+            # В Vercel браузеры должны устанавливаться через buildCommand
+            logger.error("Browsers were not installed during build. Check buildCommand in vercel.json")
+            return None
         # Устанавливаем нормальный размер viewport
         page = await browser.new_page(viewport={'width': 1280, 'height': 800})
         
