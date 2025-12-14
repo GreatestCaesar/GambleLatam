@@ -164,46 +164,50 @@ class handler(BaseHTTPRequestHandler):
                 logger.info(f"Access granted for user {user_id}")
             else:
                 logger.warning(f"Update without user_id: {update_type}")
+            
+            # Обрабатываем обновление асинхронно (для всех обновлений)
+            try:
+                # Создаем новый event loop для этого запроса
+                loop = asyncio.new_event_loop()
+                asyncio.set_event_loop(loop)
                 
-                # Обрабатываем обновление асинхронно
-                try:
-                    # Создаем новый event loop для этого запроса
-                    loop = asyncio.new_event_loop()
-                    asyncio.set_event_loop(loop)
-                    
-                    async def process_update_async():
+                async def process_update_async():
+                    try:
+                        # Инициализируем приложение в этом event loop
+                        logger.info(f"Initializing application for update {update.update_id}")
+                        await application.initialize()
+                        logger.info(f"Application initialized, processing update {update.update_id}")
+                        # Обрабатываем обновление
+                        await application.process_update(update)
+                        logger.info(f"Update {update.update_id} processed successfully")
+                    except Exception as e:
+                        logger.error(f"Error in process_update_async: {e}", exc_info=True)
+                        raise
+                    finally:
+                        # Закрываем приложение
                         try:
-                            # Инициализируем приложение в этом event loop
-                            await application.initialize()
-                            logger.info(f"Application initialized, processing update {update.update_id}")
-                            # Обрабатываем обновление
-                            await application.process_update(update)
-                            logger.info(f"Update {update.update_id} processed successfully")
+                            await application.shutdown()
                         except Exception as e:
-                            logger.error(f"Error in process_update_async: {e}", exc_info=True)
-                            raise
-                        finally:
-                            # Закрываем приложение
-                            try:
-                                await application.shutdown()
-                            except Exception as e:
-                                logger.error(f"Error shutting down application: {e}")
-                    
-                    # Запускаем обработку обновления
-                    loop.run_until_complete(process_update_async())
-                    loop.close()
-                    logger.info(f"Processed update for user {user_id}")
-                    
-                except Exception as e:
-                    logger.error(f"Error in async processing: {e}", exc_info=True)
-                    # Все равно возвращаем успешный ответ
-                    self.send_response(200)
-                    self.send_header('Content-Type', 'application/json')
-                    self.end_headers()
-                    self.wfile.write(json.dumps({"ok": True, "note": "Update processed with errors"}).encode())
-                    return
-            else:
-                logger.warning("Update without effective_user")
+                            logger.error(f"Error shutting down application: {e}")
+                
+                # Запускаем обработку обновления
+                loop.run_until_complete(process_update_async())
+                loop.close()
+                logger.info(f"Processed update {update.update_id if update else 'None'}")
+                
+            except Exception as e:
+                logger.error(f"Error in async processing: {e}", exc_info=True)
+                # Возвращаем ошибку, чтобы Telegram знал, что нужно повторить
+                self.send_response(500)
+                self.send_header('Content-Type', 'application/json')
+                self.end_headers()
+                error_msg = str(e)[:200]  # Ограничиваем длину сообщения
+                self.wfile.write(json.dumps({
+                    "ok": False, 
+                    "error": error_msg,
+                    "update_id": update.update_id if update else None
+                }).encode())
+                return
             
             # Отправляем успешный ответ
             self.send_response(200)
