@@ -133,10 +133,16 @@ class handler(BaseHTTPRequestHandler):
                         
                         # Теперь создаем Update с правильным bot объектом
                         try:
+                            # Логируем сырые данные для диагностики
+                            logger.info(f"Raw update data keys: {list(data.keys()) if isinstance(data, dict) else 'not a dict'}")
+                            if isinstance(data, dict) and 'callback_query' in data:
+                                logger.info(f"Callback query data: {data['callback_query']}")
+                            
                             update = Update.de_json(data, application.bot)
                             logger.info(f"Update created: {update.update_id if update else 'None'}")
                         except Exception as update_error:
                             logger.error(f"Failed to create Update: {update_error}", exc_info=True)
+                            logger.error(f"Data that failed: {str(data)[:500]}")
                             raise
                         
                         if not update:
@@ -149,9 +155,11 @@ class handler(BaseHTTPRequestHandler):
                         if update.message:
                             update_type = "message"
                             user_id = update.message.from_user.id if update.message.from_user else None
+                            logger.info(f"Update is a message: {update.message.text if update.message.text else 'no text'}")
                         elif update.callback_query:
                             update_type = "callback_query"
                             user_id = update.callback_query.from_user.id if update.callback_query.from_user else None
+                            logger.info(f"Update is a callback_query: data={update.callback_query.data}, message_id={update.callback_query.message.message_id if update.callback_query.message else 'no message'}")
                         elif update.effective_user:
                             update_type = "other"
                             user_id = update.effective_user.id
@@ -173,12 +181,17 @@ class handler(BaseHTTPRequestHandler):
                             logger.warning(f"Update without user_id: {update_type}")
                         
                         # Обрабатываем обновление
-                        logger.info(f"Processing update {update.update_id}")
+                        logger.info(f"Processing update {update.update_id}, type: {update_type}")
                         try:
+                            # Логируем детали перед обработкой
+                            if update_type == "callback_query":
+                                logger.info(f"Callback query details: data={update.callback_query.data}, from_user={update.callback_query.from_user.id if update.callback_query.from_user else None}")
+                            
                             await application.process_update(update)
                             logger.info(f"Update {update.update_id} processed successfully")
                         except Exception as process_error:
                             logger.error(f"Error processing update: {process_error}", exc_info=True)
+                            logger.error(f"Update type was: {update_type}, Update ID: {update.update_id}")
                             raise
                     except Exception as e:
                         logger.error(f"Error in process_update_async: {e}", exc_info=True)
