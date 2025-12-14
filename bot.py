@@ -433,20 +433,8 @@ async def generate_screenshot(user_id: int) -> str:
                 
                 if result.returncode == 0:
                     logger.info("Browsers installed successfully in /tmp")
-                    # Пытаемся установить системные зависимости
-                    logger.info("Installing system dependencies for browsers...")
-                    deps_result = subprocess.run(
-                        ['python3', '-m', 'playwright', 'install-deps', 'chromium'],
-                        check=False,
-                        timeout=180,
-                        capture_output=True,
-                        text=True
-                    )
-                    if deps_result.returncode == 0:
-                        logger.info("System dependencies installed successfully")
-                    else:
-                        logger.warning(f"Failed to install system dependencies: {deps_result.stderr[:500]}")
-                        logger.warning("Browser may still work, but some features might be limited")
+                    # Системные зависимости должны быть установлены при сборке через build.sh
+                    # Если они не установлены, браузер все равно может работать с ограничениями
                 else:
                     logger.error(f"Failed to install browsers: {result.stderr[:500]}")
             else:

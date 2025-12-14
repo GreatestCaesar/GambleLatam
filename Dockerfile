@@ -1,11 +1,8 @@
-#!/bin/bash
-# Скрипт для установки зависимостей и браузеров Playwright
-set -e
+FROM python:3.11-slim
 
 # Устанавливаем системные зависимости для Playwright
-echo "Installing system dependencies for Playwright..."
-apt-get update -qq
-apt-get install -y -qq \
+RUN apt-get update -qq && \
+    apt-get install -y -qq \
     libglib2.0-0 \
     libnss3 \
     libnspr4 \
@@ -27,12 +24,26 @@ apt-get install -y -qq \
     libgbm1 \
     libasound2 \
     libpango-1.0-0 \
-    || echo "Some packages may not be available, continuing..."
+    && rm -rf /var/lib/apt/lists/*
+
+# Устанавливаем рабочую директорию
+WORKDIR /app
+
+# Копируем requirements.txt
+COPY requirements.txt .
 
 # Устанавливаем Python зависимости
-echo "Installing Python dependencies..."
-pip install -r requirements.txt
+RUN pip install --no-cache-dir -r requirements.txt
 
 # Устанавливаем браузеры Playwright
-echo "Installing Playwright browsers..."
-python -m playwright install chromium
+RUN python -m playwright install chromium
+
+# Копируем остальные файлы
+COPY . .
+
+# Открываем порт
+EXPOSE 5000
+
+# Запускаем приложение
+CMD ["python", "webhook.py"]
+
