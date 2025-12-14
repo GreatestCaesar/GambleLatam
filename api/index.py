@@ -30,15 +30,10 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
-# Инициализируем приложение при загрузке модуля
-application = None
-try:
-    if init_application:
-        application = init_application()
-        logger.info("Application initialized successfully")
-except Exception as e:
-    logger.error(f"Failed to initialize application: {e}", exc_info=True)
-    application = None
+# НЕ инициализируем приложение при загрузке модуля
+# В serverless окружении нужно создавать новое приложение для каждого запроса
+# или правильно управлять event loop
+application_factory = init_application if init_application else None
 
 
 class handler(BaseHTTPRequestHandler):
@@ -54,7 +49,7 @@ class handler(BaseHTTPRequestHandler):
                 "status": "ok",
                 "service": "Telegram Bot Webhook",
                 "message": "Bot is running",
-                "application_initialized": application is not None
+                "application_factory_available": application_factory is not None
             }).encode())
         except Exception as e:
             logger.error(f"Error in GET: {e}")
@@ -66,15 +61,19 @@ class handler(BaseHTTPRequestHandler):
     def do_POST(self):
         """Обработка POST запросов от Telegram"""
         try:
-            if application is None:
+            if application_factory is None:
                 self.send_response(500)
                 self.send_header('Content-Type', 'application/json')
                 self.end_headers()
                 self.wfile.write(json.dumps({
                     "ok": False,
-                    "error": "Application not initialized"
+                    "error": "Application factory not available"
                 }).encode())
                 return
+            
+            # Создаем новое приложение для каждого запроса
+            # Это решает проблему с event loop в serverless окружении
+            application = application_factory()
             
             # Получаем данные запроса
             content_length = int(self.headers.get('Content-Length', 0))
@@ -98,6 +97,11 @@ class handler(BaseHTTPRequestHandler):
                 self.wfile.write(json.dumps({"ok": False, "error": "Update class not imported"}).encode())
                 return
             
+            # Создаем новое приложение для каждого запроса
+            # Это решает проблему с event loop в serverless окружении
+            application = application_factory()
+            
+            # Создаем Update объект
             update = Update.de_json(data, application.bot)
             
             if update and update.effective_user:
@@ -114,24 +118,21 @@ class handler(BaseHTTPRequestHandler):
                 
                 # Обрабатываем обновление асинхронно
                 try:
-                    # Получаем или создаем event loop
-                    try:
-                        loop = asyncio.get_event_loop()
-                        if loop.is_closed():
-                            loop = asyncio.new_event_loop()
-                            asyncio.set_event_loop(loop)
-                    except RuntimeError:
-                        loop = asyncio.new_event_loop()
-                        asyncio.set_event_loop(loop)
+                    # Создаем новый event loop для этого запроса
+                    loop = asyncio.new_event_loop()
+                    asyncio.set_event_loop(loop)
                     
-                    # Убеждаемся, что приложение инициализировано
-                    async def ensure_initialized_and_process():
-                        if not application._initialized:
-                            await application.initialize()
+                    async def process_update_async():
+                        # Инициализируем приложение в этом event loop
+                        await application.initialize()
+                        # Обрабатываем обновление
                         await application.process_update(update)
+                        # Закрываем приложение
+                        await application.shutdown()
                     
                     # Запускаем обработку обновления
-                    loop.run_until_complete(ensure_initialized_and_process())
+                    loop.run_until_complete(process_update_async())
+                    loop.close()
                     logger.info(f"Processed update for user {user_id}")
                     
                 except Exception as e:
