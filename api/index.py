@@ -114,12 +114,14 @@ class handler(BaseHTTPRequestHandler):
                 self.wfile.write(json.dumps({"ok": False, "error": f"Failed to create application: {str(e)}"}).encode())
                 return
             
-            # Создаем Update объект
+            # Создаем Update объект (bot может быть None до инициализации, это нормально)
             try:
-                update = Update.de_json(data, application.bot)
+                # Для создания Update не нужен инициализированный bot
+                update = Update.de_json(data, None)
                 logger.info(f"Update created: {update.update_id if update else 'None'}")
             except Exception as e:
                 logger.error(f"Failed to create Update: {e}", exc_info=True)
+                logger.error(f"Data received: {str(data)[:500]}")
                 self.send_response(400)
                 self.send_header('Content-Type', 'application/json')
                 self.end_headers()
@@ -174,12 +176,22 @@ class handler(BaseHTTPRequestHandler):
                 async def process_update_async():
                     try:
                         # Инициализируем приложение в этом event loop
-                        logger.info(f"Initializing application for update {update.update_id}")
-                        await application.initialize()
-                        logger.info(f"Application initialized, processing update {update.update_id}")
+                        logger.info(f"Initializing application for update {update.update_id if update else 'None'}")
+                        try:
+                            await application.initialize()
+                            logger.info(f"Application initialized successfully")
+                        except Exception as init_error:
+                            logger.error(f"Failed to initialize application: {init_error}", exc_info=True)
+                            raise
+                        
+                        logger.info(f"Processing update {update.update_id if update else 'None'}")
                         # Обрабатываем обновление
-                        await application.process_update(update)
-                        logger.info(f"Update {update.update_id} processed successfully")
+                        try:
+                            await application.process_update(update)
+                            logger.info(f"Update {update.update_id if update else 'None'} processed successfully")
+                        except Exception as process_error:
+                            logger.error(f"Error processing update: {process_error}", exc_info=True)
+                            raise
                     except Exception as e:
                         logger.error(f"Error in process_update_async: {e}", exc_info=True)
                         raise
@@ -187,8 +199,9 @@ class handler(BaseHTTPRequestHandler):
                         # Закрываем приложение
                         try:
                             await application.shutdown()
+                            logger.info("Application shut down successfully")
                         except Exception as e:
-                            logger.error(f"Error shutting down application: {e}")
+                            logger.error(f"Error shutting down application: {e}", exc_info=True)
                 
                 # Запускаем обработку обновления
                 loop.run_until_complete(process_update_async())
