@@ -61,7 +61,15 @@ class handler(BaseHTTPRequestHandler):
     def do_POST(self):
         """Обработка POST запросов от Telegram"""
         try:
+            # Логируем наличие переменных окружения для диагностики
+            env_vars = [k for k in os.environ.keys() if 'TELEGRAM' in k or 'ALLOWED' in k]
+            logger.info(f"Relevant env vars found: {env_vars}")
+            if 'ALLOWED_TELEGRAM_IDS' in os.environ:
+                allowed_ids_preview = os.environ['ALLOWED_TELEGRAM_IDS'][:50]
+                logger.info(f"ALLOWED_TELEGRAM_IDS preview: {allowed_ids_preview}...")
+            
             if application_factory is None:
+                logger.error("Application factory not available")
                 self.send_response(500)
                 self.send_header('Content-Type', 'application/json')
                 self.end_headers()
@@ -120,15 +128,26 @@ class handler(BaseHTTPRequestHandler):
             
             if update and update.effective_user:
                 user_id = update.effective_user.id
+                logger.info(f"Processing update for user_id: {user_id}, username: {update.effective_user.username}")
                 
                 # Проверяем доступ пользователя
-                if check_user_access and not check_user_access(user_id):
+                if not check_user_access:
+                    logger.error("check_user_access function is not available!")
+                    self.send_response(500)
+                    self.send_header('Content-Type', 'application/json')
+                    self.end_headers()
+                    self.wfile.write(json.dumps({"ok": False, "error": "Access check function not available"}).encode())
+                    return
+                
+                if not check_user_access(user_id):
                     logger.warning(f"Access denied for user {user_id}")
                     self.send_response(403)
                     self.send_header('Content-Type', 'application/json')
                     self.end_headers()
-                    self.wfile.write(json.dumps({"ok": False, "error": "Access denied"}).encode())
+                    self.wfile.write(json.dumps({"ok": False, "error": "Access denied", "user_id": user_id}).encode())
                     return
+                
+                logger.info(f"Access granted for user {user_id}")
                 
                 # Обрабатываем обновление асинхронно
                 try:

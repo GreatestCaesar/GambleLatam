@@ -74,6 +74,9 @@ def check_user_access(user_id: int) -> bool:
     # Получаем список разрешенных ID из переменной окружения
     allowed_ids_str = os.getenv('ALLOWED_TELEGRAM_IDS', '')
     
+    logger.info(f"Checking access for user_id: {user_id}")
+    logger.info(f"ALLOWED_TELEGRAM_IDS env var: {allowed_ids_str[:50]}..." if len(allowed_ids_str) > 50 else f"ALLOWED_TELEGRAM_IDS env var: {allowed_ids_str}")
+    
     if not allowed_ids_str:
         # Если список не задан, разрешаем всем (для разработки)
         logger.warning("ALLOWED_TELEGRAM_IDS not set, allowing all users")
@@ -87,8 +90,14 @@ def check_user_access(user_id: int) -> bool:
         except ValueError:
             continue
     
+    logger.info(f"Parsed allowed IDs: {allowed_ids}")
+    logger.info(f"User ID type: {type(user_id)}, User ID value: {user_id}")
+    logger.info(f"Allowed IDs types: {[type(id) for id in allowed_ids]}")
+    
     # Проверяем, есть ли пользователь в списке
-    return user_id in allowed_ids
+    has_access = user_id in allowed_ids
+    logger.info(f"Access check result: {has_access}")
+    return has_access
 
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
